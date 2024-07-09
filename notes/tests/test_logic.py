@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from pytils.translit import slugify
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -29,7 +30,10 @@ class TestNoteCreation(TestCase):
         }
 
     def test_anonymus_user_cant_create_note(self):
-        self.client.post(self.url, data=self.note_form_data)
+        login_url = reverse('users:login')
+        redirect_url = f'{login_url}?next={self.url}'
+        response = self.client.post(self.url, data=self.note_form_data)
+        self.assertRedirects(response, redirect_url)
         note_count = Note.objects.count()
         self.assertEqual(note_count, 0)
 
@@ -46,24 +50,22 @@ class TestNoteCreation(TestCase):
         self.assertEqual(note.slug, self.NOTE_SLUG)
         self.assertEqual(note.author, self.author)
 
-    def test_user_can_create_note_without_slug(self):
-        note_without_slug_form_data = {
+    def test_empty_slug(self):
+        without_slug_form_data = {
             key: self.note_form_data[key]
             for key in self.note_form_data
             if key != 'slug'
         }
         response = self.author_client.post(
-            self.url, data=note_without_slug_form_data
+            self.url, data=without_slug_form_data
         )
         self.assertRedirects(response, self.success_url)
-        note_count = Note.objects.count()
-        self.assertEqual(note_count, 1)
-        note = Note.objects.get()
-        self.assertEqual(note.title, self.NOTE_TITLE)
-        self.assertEqual(note.text, self.NOTE_TEXT)
-        self.assertEqual(note.author, self.author)
+        self.assertEqual(Note.objects.count(), 1)
+        new_note = Note.objects.get()
+        expected_slug = slugify(without_slug_form_data['title'])
+        self.assertEqual(new_note.slug, expected_slug)
 
-    def test_user_cant_create_note_with_existing_slug(self):
+    def test_not_unique_slug(self):
         response = self.author_client.post(
             self.url, data=self.note_form_data
         )
@@ -82,16 +84,12 @@ class TestNoteCreation(TestCase):
             field='slug',
             errors=self.NOTE_SLUG + WARNING
         )
-        note_count = Note.objects.count()
-        self.assertEqual(note_count, 1)
+        self.assertEqual(Note.objects.count(), 1)
 
 
 class TestNoteEditDelete(TestCase):
-    NOTE_TEXT = 'Текст записки.'
     NEW_NOTE_TEXT = 'Обновленный текст записки'
-    NOTE_TITLE = 'Заголовок'
     NEW_NOTE_TITLE = 'Новый заголовок'
-    NOTE_SLUG = 'note'
     NEW_NOTE_SLUG = 'new_slug'
 
     @classmethod
@@ -103,9 +101,9 @@ class TestNoteEditDelete(TestCase):
         cls.another_user_client = Client()
         cls.another_user_client.force_login(cls.another_user)
         cls.note = Note.objects.create(
-            title=cls.NOTE_TITLE,
-            text=cls.NOTE_TEXT,
-            slug=cls.NOTE_SLUG,
+            title='Заголовок',
+            text='Текст записки.',
+            slug='note-slug',
             author=cls.author
         )
         cls.success_url = reverse('notes:success')
@@ -120,14 +118,12 @@ class TestNoteEditDelete(TestCase):
     def test_author_can_delete_note(self):
         response = self.author_client.post(self.delete_url)
         self.assertRedirects(response, self.success_url)
-        note_count = Note.objects.count()
-        self.assertEqual(note_count, 0)
+        self.assertEqual(Note.objects.count(), 0)
 
     def test_user_cant_delete_note_of_another_user(self):
         response = self.another_user_client.post(self.delete_url)
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
-        note_count = Note.objects.count()
-        self.assertEqual(note_count, 1)
+        self.assertEqual(Note.objects.count(), 1)
 
     def test_author_can_edit_note(self):
         response = self.author_client.post(self.edit_url, data=self.form_data)
@@ -143,7 +139,7 @@ class TestNoteEditDelete(TestCase):
             data=self.form_data
         )
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
-        self.note.refresh_from_db()
-        self.assertEqual(self.note.title, self.NOTE_TITLE)
-        self.assertEqual(self.note.text, self.NOTE_TEXT)
-        self.assertEqual(self.note.slug, self.NOTE_SLUG)
+        note_from_db = Note.objects.get(id=self.note.id)
+        self.assertEqual(self.note.title, note_from_db.title)
+        self.assertEqual(self.note.text, note_from_db.text)
+        self.assertEqual(self.note.slug, note_from_db.slug)

@@ -23,7 +23,7 @@ class TestRoutes(TestCase):
             author=cls.author
         )
 
-    def test_page_avialability(self):
+    def test_pages_avialability_for_anonymus_user(self):
         urls = (
             'notes:home',
             'users:login',
@@ -36,7 +36,7 @@ class TestRoutes(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, HTTPStatus.OK)
 
-    def test_avialability_for_existing_note(self):
+    def test_avialability_for_different_users(self):
         users_statuses = (
             (self.author, HTTPStatus.OK),
             (self.non_author, HTTPStatus.NOT_FOUND)
@@ -56,7 +56,7 @@ class TestRoutes(TestCase):
 
     def test_page_availability_for_authorised_user(self):
         self.client.force_login(self.author)
-        for name in ('notes:list', 'notes:add'):
+        for name in ('notes:list', 'notes:add', 'notes:success'):
             with self.subTest(name=name):
                 url = reverse(name)
                 response = self.client.get(url)
@@ -66,11 +66,12 @@ class TestRoutes(TestCase):
         login_url = reverse('users:login')
         slug = (self.note.slug,)
         urls = (
-            ('notes:add', None),
             ('notes:detail', slug),
             ('notes:edit', slug),
             ('notes:delete', slug),
             ('notes:list', None),
+            ('notes:add', None),
+            ('notes:success', None)
         )
         for name, args in urls:
             with self.subTest(name=name):
